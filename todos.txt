@@ -1,0 +1,1 @@
+- use SEP instead of BOS and EOS?
