@@ -28,7 +28,7 @@ class GenerativeDataset:
         if from_pickle:
             self.load_from(source)
         else:
-            self._accumulate_tokens(source, tokenizer, window_size)
+            self._accumulate_tokens(source, tokenizer, context, window_size)
         self.batch_size = batch_size
         self._current_sample_idx = 0
         self.device = device
