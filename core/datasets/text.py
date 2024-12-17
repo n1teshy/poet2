@@ -25,6 +25,9 @@ class GnerativeDataset:
         self.device = device
         self.indefinite = indefinite
 
+    def __len__(self):
+        return len(self.tokens) // (self.batch_size * self.context)
+
     def accumulate_tokens(self, source: str, tokenizer: Tokenizer):
         if path.isfile(source):
             files = [source]
@@ -39,9 +42,12 @@ class GnerativeDataset:
                 )
 
     def next_batch(self) -> torch.Tensor:
-        tokens = None
         end_idx = self.current_idx + self.batch_size * self.context
         if end_idx >= len(self.tokens):
-            if not self.indefinite:
-                return tokens
-            
+            return None
+        tokens = self.tokens[self.current_idx: end_idx]
+        self.current_idx = end_idx
+        return tokens
+    
+    def reset(self):
+        self.current_idx = 0

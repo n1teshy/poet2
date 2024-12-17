@@ -108,7 +108,7 @@ class RegexTokenizer(Tokenizer):
 
 
 def get_tokenizer(
-    filepath, vocab_size: int, cache: Optional[str] = None, verbose: bool = False
+    filepath: str, vocab_size: int, cache: Optional[str] = None, verbose: bool = False
 ) -> Tokenizer:
     tokenizer = RegexTokenizer()
     if cache is not None and os.path.exists(cache + ".model"):
