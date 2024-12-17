@@ -74,23 +74,24 @@ class GenerativeDataset:
     def _split_sample(
         self, tokens: list[int], context: int, window_size: int
     ) -> list[list[int]]:
-        positions = [(i - context, i) for i in range(context, len(tokens) + 1, context)]
+        positions = [(i, i + context) for i in range(0, len(tokens), context)]
         positions += [
-            (i, i + context) for i in range(window_size, len(tokens) + 1, context)
+            (i, i + context) for i in range(window_size, len(tokens), context)
         ]
         return [tokens[p[0] : p[1]] for p in positions]
 
-    def next_batch(self) -> torch.Tensor:
+    def next_batch(self) -> list[list[int]]:
         if self._current_sample_idx >= len(self.samples):
             return
         batch = self.samples[
-            self._current_sample_idx : self._current_sample_idx + self.batch_size
+            self._current_sample_idx : (self._current_sample_idx + self.batch_size)
         ]
         if len(batch) < self.batch_size:
             batch += self.samples[: self.batch_size - len(batch)]
             self._current_sample_idx = float("inf")
         else:
             self._current_sample_idx += self.batch_size
+        return batch
 
     def reset(self):
         self._current_sample_idx = 0
