@@ -46,7 +46,7 @@ class Tokenizer:
 
     @property
     def size(self) -> int:
-        return len(self.vocab) + len(self.special_tokens)
+        return len(self.vocab)
 
     def train(self, text: str, vocab_size: int, verbose: bool=False):
         raise NotImplementedError

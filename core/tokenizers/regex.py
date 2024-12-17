@@ -4,6 +4,7 @@ from typing import Optional
 
 from core.config import special_tokens
 from core.tokenizers.base import Tokenizer, get_stats, merge
+from core.utils import ProgressBar
 
 GPT2_SPLIT_PATTERN = (
     r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -19,26 +20,25 @@ class RegexTokenizer(Tokenizer):
         self.special_tokens = {}
         self.inverse_special_tokens = {}
 
-    def train(self, text, vocab_size, verbose=False):
+    def train(self, text, vocab_size):
         assert vocab_size >= 256
         num_merges = vocab_size - 256
         text_chunks = re.findall(self.compiled_pattern, text)
         ids = [list(ch.encode("utf-8")) for ch in text_chunks]
         merges = {}
         vocab = {idx: bytes([idx]) for idx in range(256)}
-        for i in range(num_merges):
-            stats = {}
-            for chunk_ids in ids:
-                get_stats(chunk_ids, stats)
-            pair = max(stats, key=stats.get)
-            idx = 256 + i
-            ids = [merge(chunk_ids, pair, idx) for chunk_ids in ids]
-            merges[pair] = idx
-            vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
-            if verbose:
-                print(
-                    f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences"
-                )
+        print("training tokenizer...")
+        with ProgressBar(total=num_merges) as pbar:
+            for i in range(num_merges):
+                stats = {}
+                for chunk_ids in ids:
+                    get_stats(chunk_ids, stats)
+                pair = max(stats, key=stats.get)
+                idx = 256 + i
+                ids = [merge(chunk_ids, pair, idx) for chunk_ids in ids]
+                merges[pair] = idx
+                vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
+                pbar.update()
         self.merges = merges
         self.vocab = vocab
 
@@ -115,7 +115,7 @@ def get_tokenizer(
         tokenizer.load(cache + ".model")
     else:
         text = "".join(open(filepath, encoding="utf-8").read().splitlines())
-        tokenizer.train(text, vocab_size, verbose=verbose)
+        tokenizer.train(text, vocab_size, show_progress=verbose)
         tokenizer.register_special_tokens(
             {token: tokenizer.size + idx for idx, token in enumerate(special_tokens)}
         )
