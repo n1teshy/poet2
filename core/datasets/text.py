@@ -1,9 +1,10 @@
+import math
 import torch
 import pickle
 import glob
 import os.path as path
 
-from core.config import TOKEN_BOS, TOKEN_EOS, TOKEN_PAD, device
+from torch.nn.utils.rnn import pad_sequence
 from core.tokenizers.base import Tokenizer
 from core.utils import ProgressBar
 from typing import Optional
@@ -15,7 +16,7 @@ class GenerativeDataset:
         source: str,
         batch_size: int,
         device: torch.device,
-        tokenizer: Optional[Tokenizer] = None,
+        tokenizer: Tokenizer,
         context: Optional[int] = None,
         window_size: float = 0.5,
         from_pickle: bool = False,
@@ -24,17 +25,18 @@ class GenerativeDataset:
         assert from_pickle or (
             None not in (tokenizer, context)
         ), "tokenizer and context are required"
-        self.samples = []
+        self.tokenizer = tokenizer
         if from_pickle:
             self.load_from(source)
         else:
-            self._accumulate_tokens(source, tokenizer, context, window_size)
+            self.samples = []
+            self._accumulate_tokens(source, context, window_size)
         self.batch_size = batch_size
         self._current_sample_idx = 0
         self.device = device
 
     def __len__(self):
-        return len(self.samples)
+        return math.ceil(len(self.samples) / self.batch_size)
 
     def load_from(self, source: str):
         self.samples = pickle.load(open(source, "rb"))
@@ -43,9 +45,7 @@ class GenerativeDataset:
     def dump_to(self, file: str):
         pickle.dump(self.samples, open(file, "wb"))
 
-    def _accumulate_tokens(
-        self, source: str, tokenizer: Tokenizer, context: int, window_size: float
-    ):
+    def _accumulate_tokens(self, source: str, context: int, window_size: float):
         window_size = context - int(context * window_size)
         if path.isfile(source):
             files = [source]
@@ -55,11 +55,9 @@ class GenerativeDataset:
         with ProgressBar(total=len(files)) as pbar:
             for file in files:
                 with open(file, encoding="utf-8") as f:
-                    sample_tokens = (
-                        [tokenizer.special_tokens[TOKEN_BOS]]
-                        + tokenizer.encode(f.read())
-                        + [tokenizer.special_tokens[TOKEN_EOS]]
-                    )
+                    sample_tokens = self.tokenizer.encode(f.read()) + [
+                        self.tokenizer.eos_id
+                    ]
                     if len(sample_tokens) <= context:
                         self.samples.append(sample_tokens)
                     else:
@@ -80,18 +78,28 @@ class GenerativeDataset:
         ]
         return [tokens[p[0] : p[1]] for p in positions]
 
-    def next_batch(self) -> list[list[int]]:
+    def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
         if self._current_sample_idx >= len(self.samples):
             return
-        batch = self.samples[
+        Y = self.samples[
             self._current_sample_idx : (self._current_sample_idx + self.batch_size)
         ]
-        if len(batch) < self.batch_size:
-            batch += self.samples[: self.batch_size - len(batch)]
+        if len(Y) < self.batch_size:
+            Y += self.samples[: self.batch_size - len(Y)]
             self._current_sample_idx = float("inf")
         else:
             self._current_sample_idx += self.batch_size
-        return batch
+        X = pad_sequence(
+            [torch.tensor([self.tokenizer.bos_id] + sample[:-1]) for sample in Y],
+            batch_first=True,
+            padding_value=self.tokenizer.pad_id,
+        ).to(self.device)
+        Y = pad_sequence(
+            [torch.tensor(sample) for sample in Y],
+            batch_first=True,
+            padding_value=self.tokenizer.pad_id,
+        ).to(self.device)
+        return X, Y
 
     def reset(self):
         self._current_sample_idx = 0

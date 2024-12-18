@@ -83,7 +83,7 @@ class Decoder(nn.Module):
     def __init__(self, model_dim: int, blocks: int, heads: int):
         super().__init__()
         self.blocks = nn.ModuleList(
-            [Block(model_dim, heads, is_decoder=False) for _ in range(blocks)]
+            [Block(model_dim, heads) for _ in range(blocks)]
         )
 
     def forward(self, x, mask):

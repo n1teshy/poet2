@@ -1,4 +1,5 @@
 import unicodedata
+from core.config import TOKEN_BOS, TOKEN_EOS, TOKEN_PAD
 
 
 def get_stats(ids, counts=None):
@@ -47,6 +48,18 @@ class Tokenizer:
     @property
     def size(self) -> int:
         return len(self.vocab)
+    
+    @property
+    def bos_id(self):
+        return self.special_tokens.get(TOKEN_BOS)
+    
+    @property
+    def eos_id(self):
+        return self.special_tokens.get(TOKEN_EOS)
+    
+    @property
+    def pad_id(self):
+        return self.special_tokens.get(TOKEN_PAD)
 
     def train(self, text: str, vocab_size: int, verbose: bool=False):
         raise NotImplementedError
