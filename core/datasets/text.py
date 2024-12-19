@@ -55,51 +55,50 @@ class GenerativeDataset:
         with ProgressBar(total=len(files)) as pbar:
             for file in files:
                 with open(file, encoding="utf-8") as f:
-                    sample_tokens = self.tokenizer.encode(f.read()) + [
-                        self.tokenizer.eos_id
-                    ]
-                    if len(sample_tokens) <= context:
-                        self.samples.append(sample_tokens)
+                    tokens = self.tokenizer.encode(f.read())
+                    x_tokens = [self.tokenizer.bos_id] + tokens
+                    y_tokens = tokens + [self.tokenizer.eos_id]
+                    if len(x_tokens) <= context:
+                        self.samples.append((x_tokens, y_tokens))
                     else:
                         # use sliding window to split into
                         # context sized samples
                         self.samples.extend(
-                            self._split_sample(sample_tokens, context, window_size)
+                            self._split_sample(x_tokens, y_tokens, context, window_size)
                         )
                 pbar.update()
-            self.samples.sort(key=lambda batch: len(batch))
+            self.samples.sort(key=lambda batch: len(batch), reverse=True)
 
     def _split_sample(
-        self, tokens: list[int], context: int, window_size: int
+        self, x_tokens: list[int], y_tokens: list[int], context: int, window_size: int
     ) -> list[list[int]]:
-        positions = [(i, i + context) for i in range(0, len(tokens), context)]
+        positions = [(i, i + context) for i in range(0, len(x_tokens), context)]
         positions += [
-            (i, i + context) for i in range(window_size, len(tokens), context)
+            (i, i + context) for i in range(window_size, len(x_tokens), context)
         ]
-        return [tokens[p[0] : p[1]] for p in positions]
+        return [(x_tokens[p[0] : p[1]], y_tokens[p[0] : p[1]]) for p in positions]
 
     def next_batch(self) -> tuple[torch.Tensor, torch.Tensor]:
         if self._current_sample_idx >= len(self.samples):
             return
-        Y = self.samples[
+        samples = self.samples[
             self._current_sample_idx : (self._current_sample_idx + self.batch_size)
         ]
-        if len(Y) < self.batch_size:
-            Y += self.samples[: self.batch_size - len(Y)]
+        if len(samples) < self.batch_size:
+            samples += self.samples[: self.batch_size - len(samples)]
             self._current_sample_idx = float("inf")
         else:
             self._current_sample_idx += self.batch_size
-        X = pad_sequence(
-            [torch.tensor([self.tokenizer.bos_id] + sample[:-1]) for sample in Y],
-            batch_first=True,
-            padding_value=self.tokenizer.pad_id,
-        ).to(self.device)
-        Y = pad_sequence(
-            [torch.tensor(sample) for sample in Y],
-            batch_first=True,
-            padding_value=self.tokenizer.pad_id,
-        ).to(self.device)
-        return X, Y
+        Xs, Ys = map(
+            lambda batch: [torch.tensor(sample) for sample in batch], zip(*samples)
+        )
+        Xs = pad_sequence(Xs, batch_first=True, padding_value=self.tokenizer.pad_id).to(
+            self.device
+        )
+        Ys = pad_sequence(Ys, batch_first=True, padding_value=self.tokenizer.pad_id).to(
+            self.device
+        )
+        return Xs, Ys
 
     def reset(self):
         self._current_sample_idx = 0
